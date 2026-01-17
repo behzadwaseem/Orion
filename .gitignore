@@ -16,7 +16,6 @@ ENV/
 
 # Environment files
 .env
-.env.*
 
 # OS files
 .DS_Store
@@ -30,3 +29,11 @@ logs/
 .vscode/
 .idea/
 *.swp
+
+# data
+data/
+
+# Spec files (project planning)
+spec.md
+SPEC.md
+*.spec.md
