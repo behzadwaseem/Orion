@@ -16,6 +16,8 @@ ENV/
 
 # Environment files
 .env
+!.env.example
+!backend/.env.example
 
 # OS files
 .DS_Store
