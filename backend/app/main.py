@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.routes import auth, dataset
+from app.routes import datasets, images
+from app.routes import auth
 
 app = FastAPI(title="Orion API", version="0.1.0")
 
@@ -16,7 +17,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth.router)
-app.include_router(dataset.router)
+app.include_router(datasets.router)
+app.include_router(images.router)
 
 @app.get("/")
 async def root():

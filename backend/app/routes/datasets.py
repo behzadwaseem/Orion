@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.core.deps import require_user
 from app.models.user import User
 from app.models.dataset import Dataset
-from app.schemas.dataset import DatasetCreate, DatasetResponse
+from app.schemas.datasets import DatasetCreate, DatasetResponse
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
