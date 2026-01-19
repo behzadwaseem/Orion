@@ -1,1 +1,1 @@
-from . import auth, datasets, images
+from . import auth, datasets, images, annotations
