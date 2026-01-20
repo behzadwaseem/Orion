@@ -2,18 +2,33 @@ from ultralytics import YOLO
 from pathlib import Path
 from typing import List, Dict, Any
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 class YOLOService:
     def __init__(self):
         self.models = {}
+        # Get the models directory path
+        self.models_dir = Path(__file__).parent.parent.parent / "yolo-models"
+        self.models_dir.mkdir(exist_ok=True)  # Create if doesn't exist
     
     def load_model(self, model_name: str):
         """Load YOLO model (cached)."""
         if model_name not in self.models:
             logger.info(f"Loading YOLO model: {model_name}")
-            self.models[model_name] = YOLO(model_name)
+            
+            # Check if model exists in local models folder first
+            local_model_path = self.models_dir / model_name
+            
+            if local_model_path.exists():
+                logger.info(f"Using local model: {local_model_path}")
+                self.models[model_name] = YOLO(str(local_model_path))
+            else:
+                # Fallback to downloading from ultralytics
+                logger.info(f"Model not found locally, downloading: {model_name}")
+                self.models[model_name] = YOLO(model_name)
+                
         return self.models[model_name]
     
     def predict_image(
