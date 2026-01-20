@@ -3,8 +3,17 @@
 import { useState, useCallback, useEffect } from "react"
 import { ImageAnnotator } from "@/components/image-annotator"
 import { AnnotatePageHeader } from "@/components/annotate/annotate-page-header"
-import { getDataset, getImages, getAnnotations, saveAnnotations, getImageUrl } from "@/lib/api"
+import { UploadImagesDialog } from "@/components/datasets/upload-images-dialog"
+import { getDataset, getImages, getAnnotations, saveAnnotations, getImageUrl, startPrelabel, getJobStatus, exportDataset } from "@/lib/api"
 import type { Image, Annotation } from "@/lib/types"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Button } from "@/components/ui/button"
+import { Label } from "@/components/ui/label"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import { Sparkles, Loader2 } from "lucide-react"
+
 
 interface AnnotateBox {
   id?: string
@@ -54,6 +63,14 @@ export function AnnotateContent({ datasetId }: AnnotateContentProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
+  const [showUploadDialog, setShowUploadDialog] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  
+  // Prelabel states
+  const [showPrelabelDialog, setShowPrelabelDialog] = useState(false)
+  const [isPrelabeling, setIsPrelabeling] = useState(false)
+  const [prelabelJobId, setPrelabelJobId] = useState<string | null>(null)
+  const [prelabelProgress, setPrelabelProgress] = useState({ processed: 0, total: 0 })
 
   // Convert simple box to full box with keypoints
   const convertToFullBox = (simpleBox: AnnotateBox): AnnotateBoundingBox => {
@@ -159,6 +176,83 @@ export function AnnotateContent({ datasetId }: AnnotateContentProps) {
     }
   }
 
+const handleUploadImages = useCallback(() => {
+    setShowUploadDialog(true)
+  }, [])
+
+  const handleUploadSuccess = useCallback(() => {
+    setShowUploadDialog(false)
+    loadDatasetAndImages()
+  }, [])
+
+  const handleStartPrelabel = useCallback(async (
+    goal: string,
+    instructions: string,
+    agentMode: boolean
+  ) => {
+    setIsPrelabeling(true)
+    setShowPrelabelDialog(false)
+    
+    try {
+      const result = await startPrelabel(
+        datasetId,
+        goal as "fast" | "balanced" | "quality",
+        instructions,
+        agentMode
+      )
+      
+      setPrelabelJobId(result.job_id)
+      console.log("🤖 Prelabel job started:", result.job_id)
+      
+      // Poll for job status
+      const pollInterval = setInterval(async () => {
+        try {
+          const status = await getJobStatus(result.job_id)
+          
+          setPrelabelProgress({
+            processed: status.processed,
+            total: status.total
+          })
+          
+          if (status.status === "complete") {
+            clearInterval(pollInterval)
+            setIsPrelabeling(false)
+            setPrelabelJobId(null)
+            console.log("✅ Prelabel complete!")
+            
+            // Reload images to show new annotations
+            await loadDatasetAndImages()
+          } else if (status.status === "failed") {
+            clearInterval(pollInterval)
+            setIsPrelabeling(false)
+            setPrelabelJobId(null)
+            setError(`Prelabel failed: ${status.error}`)
+          }
+        } catch (err: any) {
+          clearInterval(pollInterval)
+          setIsPrelabeling(false)
+          setPrelabelJobId(null)
+          setError(err.message)
+        }
+      }, 2000) // Poll every 2 seconds
+      
+    } catch (err: any) {
+      console.error("❌ Prelabel error:", err)
+      setError(err.message || "Failed to start prelabel")
+      setIsPrelabeling(false)
+    }
+  }, [datasetId])
+
+  const handleExportDataset = useCallback(async () => {
+    try {
+      await exportDataset(datasetId)
+      console.log("✅ Export complete")
+    } catch (err: any) {
+      console.error("❌ Export error:", err)
+      setError(err.message || "Failed to export dataset")
+    }
+  }, [datasetId])
+
   const handleImagesChange = useCallback((newImages: AnnotateImageData[]) => {
     setImages(newImages)
   }, [])
@@ -241,7 +335,13 @@ export function AnnotateContent({ datasetId }: AnnotateContentProps) {
 
   return (
     <main className="container mx-auto px-4 py-6 relative z-10 max-w-full overflow-hidden">
-      <AnnotatePageHeader datasetName={datasetName} />
+      <AnnotatePageHeader 
+        datasetName={datasetName}
+        onPrelabelClick={() => setShowPrelabelDialog(true)}
+        onExportClick={handleExportDataset}
+        isPrelabeling={isPrelabeling}
+        prelabelProgress={prelabelProgress}
+      />
 
       <ImageAnnotator
         images={images}
@@ -250,8 +350,107 @@ export function AnnotateContent({ datasetId }: AnnotateContentProps) {
         onCurrentImageIndexChange={handleCurrentImageIndexChange}
         onSave={handleSaveAnnotations}
         onExport={handleExport}
+        onUpload={handleUploadImages}
         isSaving={isSaving}
+        isUploading={isUploading}
+      />
+
+      {/* Upload dialog */}
+      <UploadImagesDialog
+        datasetId={datasetId}
+        open={showUploadDialog}
+        onOpenChange={setShowUploadDialog}
+        onSuccess={handleUploadSuccess}
+      />
+
+      {/* Prelabel dialog */}
+      <PrelabelDialog
+        open={showPrelabelDialog}
+        onOpenChange={setShowPrelabelDialog}
+        onStart={handleStartPrelabel}
+        isLoading={isPrelabeling}
       />
     </main>
+  )
+}
+
+interface PrelabelDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onStart: (goal: string, instructions: string, agentMode: boolean) => void
+  isLoading?: boolean
+}
+
+export function PrelabelDialog({ open, onOpenChange, onStart, isLoading }: PrelabelDialogProps) {
+  const [goal, setGoal] = useState("balanced")
+  const [instructions, setInstructions] = useState("")
+  const [agentMode, setAgentMode] = useState(false)
+
+  const handleStart = () => {
+    onStart(goal, instructions, agentMode)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[500px]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-primary" />
+            Auto-Label with AI
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <Label>Goal</Label>
+            <RadioGroup value={goal} onValueChange={setGoal} className="mt-2 space-y-2">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="fast" id="fast" />
+                <Label htmlFor="fast" className="cursor-pointer">Fast (lower accuracy)</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="balanced" id="balanced" />
+                <Label htmlFor="balanced" className="cursor-pointer">Balanced</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="quality" id="quality" />
+                <Label htmlFor="quality" className="cursor-pointer">Quality (slower)</Label>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div>
+            <Label htmlFor="instructions">Instructions (optional)</Label>
+            <Textarea
+              id="instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="e.g., 'focus on recall' or 'ignore small objects'"
+              className="mt-2"
+            />
+          </div>
+
+          <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+            <div>
+              <Label htmlFor="agent-mode" className="font-semibold">Agent Mode</Label>
+              <p className="text-xs text-muted-foreground">Auto-tune parameters before labeling</p>
+            </div>
+            <Switch
+              id="agent-mode"
+              checked={agentMode}
+              onCheckedChange={setAgentMode}
+            />
+          </div>
+
+          <Button
+            onClick={handleStart}
+            disabled={isLoading}
+            className="w-full"
+          >
+            {isLoading ? "Starting..." : "Start Auto-Labeling"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }

@@ -149,3 +149,11 @@ export interface DatasetsGridProps {
   onUpload: (id: string) => void; // ← Add this
   onCreateClick: () => void;
 }
+
+export interface AnnotatePageHeaderProps {
+  datasetName: string
+  onPrelabelClick?: () => void
+  onExportClick?: () => void
+  isPrelabeling?: boolean
+  prelabelProgress?: { processed: number; total: number }
+}

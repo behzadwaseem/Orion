@@ -125,38 +125,50 @@ export async function markReviewed(imageId: string) {
 }
 
 // Jobs
-export async function startPrelabel(datasetId: string, agentMode: boolean, goal: string, instructions?: string) {
-  return fetchAPI(`/datasets/${datasetId}/prelabel?agent_mode=${agentMode}`, {
-    method: 'POST',
-    body: JSON.stringify({ goal, instructions }),
-  });
+export async function startPrelabel(
+  datasetId: string,
+  goal: "fast" | "balanced" | "quality" = "balanced",
+  instructions: string = "",
+  agentMode: boolean = false
+): Promise<{ job_id: string }> {
+  const params = new URLSearchParams()
+  if (agentMode) params.append("agent_mode", "true")
+  
+  const response = await fetch(
+    `${API_URL}/datasets/${datasetId}/prelabel?${params}`,
+    {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goal, instructions })
+    }
+  )
+  
+  if (!response.ok) throw new Error("Failed to start prelabel")
+  return response.json()
 }
 
-export async function getJobStatus(jobId: string) {
-  return fetchAPI(`/jobs/${jobId}`);
+export async function getJobStatus(jobId: string): Promise<any> {
+  const response = await fetch(`${API_URL}/jobs/${jobId}`, {
+    credentials: "include"
+  })
+  
+  if (!response.ok) throw new Error("Failed to get job status")
+  return response.json()
 }
 
-export async function exportDataset(datasetId: string) {
+export async function exportDataset(datasetId: string): Promise<void> {
   const response = await fetch(`${API_URL}/datasets/${datasetId}/export`, {
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ detail: 'Export failed' }));
-    throw new Error(error.detail || 'Export failed');
-  }
-
-  const blob = await response.blob();
-  return blob;
-}
-
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+    credentials: "include"
+})
+  
+  if (!response.ok) throw new Error("Failed to export dataset")
+  
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `dataset_export.json`
+  a.click()
+  URL.revokeObjectURL(url)
 }
