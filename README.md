@@ -2,6 +2,9 @@
 
 Orion is a full stack web app for creating computer vision datasets with manual bounding box annotation and YOLO-powered auto-labeling. It includes an optional Agent Mode that samples images, computes simple quality metrics, and adjusts YOLO parameters before labeling the full dataset.
 
+[<img width="1440" height="876" alt="image" src="https://github.com/user-attachments/assets/9295f6a0-e250-45fb-abe2-390e8a10fbda" />](https://www.youtube.com/watch?v=c68kAMMEUuk)
+
+
 ## Features
 
 - Datasets: create, list, delete
