@@ -7,6 +7,11 @@ from app.core.deps import require_user
 from app.models.user import User
 from app.models.dataset import Dataset
 from app.schemas.datasets import DatasetCreate, DatasetResponse
+from fastapi.responses import JSONResponse
+from app.models.image import Image
+from app.models.annotation import Annotation
+from app.schemas.datasets import DatasetCreate, DatasetResponse
+
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -73,3 +78,64 @@ async def delete_dataset(
     db.commit()
     
     return {"message": "Dataset deleted successfully"}
+
+
+@router.get("/{dataset_id}/export")
+async def export_dataset(
+    dataset_id: UUID,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """Export dataset annotations as JSON."""
+    
+    dataset = db.query(Dataset).filter(
+        Dataset.id == dataset_id,
+        Dataset.owner_user_id == user.id
+    ).first()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    images = db.query(Image).filter(Image.dataset_id == dataset_id).all()
+    
+    export_data = {
+        "dataset": {
+            "id": str(dataset.id),
+            "name": dataset.name,
+            "description": dataset.description,
+            "created_at": dataset.created_at.isoformat()
+        },
+        "images": [],
+        "annotations": []
+    }
+    
+    for img in images:
+        export_data["images"].append({
+            "id": str(img.id),
+            "filename": img.filename,
+            "width": img.width,
+            "height": img.height
+        })
+        
+        annotations = db.query(Annotation).filter(Annotation.image_id == img.id).all()
+        
+        for ann in annotations:
+            export_data["annotations"].append({
+                "id": str(ann.id),
+                "image_id": str(ann.image_id),
+                "label": ann.label,
+                "x": ann.x,
+                "y": ann.y,
+                "w": ann.w,
+                "h": ann.h,
+                "source": ann.source,
+                "confidence": ann.confidence
+            })
+    
+    return JSONResponse(
+        content=export_data,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f"attachment; filename={dataset.name}_export.json"
+        }
+    )

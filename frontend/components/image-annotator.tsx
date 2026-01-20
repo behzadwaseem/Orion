@@ -361,22 +361,44 @@ export function ImageAnnotator({
       return
     }
 
-    const img = new window.Image()
-    img.crossOrigin = "anonymous"
-    
-    img.onload = () => {
-      console.log("✅ Image loaded successfully:", imageToLoad.filename)
-      setCanvasSize({ width: img.width, height: img.height })
-      setLoadedImage(img)
+    // Fetch image as blob to include credentials
+    const loadImage = async () => {
+      try {
+        console.log("🔄 Loading image from:", imageToLoad.url)
+        
+        const response = await fetch(imageToLoad.url, {
+          credentials: 'include'  // ← This sends the cookie
+        })
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`)
+        }
+        
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        
+        const img = new window.Image()
+        
+        img.onload = () => {
+          console.log("✅ Image loaded successfully:", imageToLoad.filename)
+          setCanvasSize({ width: img.width, height: img.height })
+          setLoadedImage(img)
+          URL.revokeObjectURL(blobUrl) // Clean up
+        }
+        
+        img.onerror = (e) => {
+          console.error("❌ Failed to load image:", imageToLoad.url, e)
+          URL.revokeObjectURL(blobUrl)
+        }
+        
+        img.src = blobUrl
+        
+      } catch (err) {
+        console.error("❌ Failed to fetch image:", err)
+      }
     }
     
-    img.onerror = (e) => {
-      console.error("❌ Failed to load image:", imageToLoad.url, e)
-    }
-    
-    // Use url from backend
-    console.log("🔄 Loading image from:", imageToLoad.url)
-    img.src = imageToLoad.url
+    loadImage()
     
     setSelectedBox(null)
     setExpandedBoxes(new Set())
