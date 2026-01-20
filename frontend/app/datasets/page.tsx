@@ -8,6 +8,7 @@ import { DatasetsPageHeader } from "@/components/datasets/datasets-page-header"
 import { DatasetsStatsBar } from "@/components/datasets/datasets-stats-bar"
 import { DatasetsGrid } from "@/components/datasets/datasets-grid"
 import { CreateDatasetDialog } from "@/components/datasets/create-dataset-dialog"
+import { UploadImagesDialog } from "@/components/datasets/upload-images-dialog"
 import { getDatasets, getImages, createDataset, deleteDataset, getCurrentUser, logout } from "@/lib/api"
 import type { Dataset, DatasetWithStats, CreateDatasetInput, DatasetsStats, Image, User } from "@/lib/types"
 
@@ -18,6 +19,8 @@ export default function DatasetsPage() {
   const [stats, setStats] = useState<DatasetsStats>({ totalDatasets: 0, totalImages: 0, totalAnnotated: 0 })
   const [isLoading, setIsLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
+  const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
+  const [selectedDatasetForUpload, setSelectedDatasetForUpload] = useState<{ id: string; name: string } | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [error, setError] = useState<string | undefined>()
 
@@ -31,7 +34,6 @@ export default function DatasetsPage() {
       const userData = await getCurrentUser()
       setUser(userData)
     } catch (err) {
-      // If not authenticated, redirect to login
       router.push('/login')
     }
   }
@@ -41,10 +43,8 @@ export default function DatasetsPage() {
     setError(undefined)
 
     try {
-      // Fetch all datasets
       const datasetsData: Dataset[] = await getDatasets()
 
-      // Fetch images for each dataset to compute stats
       const datasetsWithStats = await Promise.all(
         datasetsData.map(async (dataset) => {
           try {
@@ -84,7 +84,6 @@ export default function DatasetsPage() {
 
       setDatasets(datasetsWithStats)
 
-      // Compute aggregate stats
       const totalDatasets = datasetsWithStats.length
       const totalImages = datasetsWithStats.reduce((sum, d) => sum + d.totalImages, 0)
       const totalAnnotated = datasetsWithStats.reduce((sum, d) => sum + d.annotatedImages, 0)
@@ -127,6 +126,18 @@ export default function DatasetsPage() {
     setDatasets(prev => prev.map(d => 
       d.id === id ? { ...d, starred: !d.starred } : d
     ))
+  }
+
+  function handleUploadClick(id: string) {
+    const dataset = datasets.find(d => d.id === id)
+    if (dataset) {
+      setSelectedDatasetForUpload({ id: dataset.id, name: dataset.name })
+      setUploadDialogOpen(true)
+    }
+  }
+
+  function handleUploadComplete() {
+    loadDatasetsWithStats()
   }
 
   function handleOpenDataset(id: string) {
@@ -178,6 +189,7 @@ export default function DatasetsPage() {
           onOpenDataset={handleOpenDataset}
           onDeleteDataset={handleDeleteDataset}
           onToggleStar={handleToggleStar}
+          onUpload={handleUploadClick}
           onCreateClick={() => setCreateDialogOpen(true)}
         />
 
@@ -187,6 +199,16 @@ export default function DatasetsPage() {
           onCreate={handleCreateDataset}
           isCreating={isCreating}
         />
+
+        {selectedDatasetForUpload && (
+          <UploadImagesDialog
+            open={uploadDialogOpen}
+            onOpenChange={setUploadDialogOpen}
+            datasetId={selectedDatasetForUpload.id}
+            datasetName={selectedDatasetForUpload.name}
+            onUploadComplete={handleUploadComplete}
+          />
+        )}
       </div>
     </div>
   )

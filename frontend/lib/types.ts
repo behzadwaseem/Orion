@@ -31,6 +31,35 @@ export interface Annotation {
   confidence: number | null;
 }
 
+export interface AnnotateImageData {
+  id: string;
+  filename: string;
+  url: string;
+  width: number;
+  height: number;
+  boxes: AnnotateBox[];
+}
+
+export interface AnnotateBox {
+  id?: string;
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  color?: string;
+}
+
+export interface AnnotateExportData {
+  dataset: string;
+  images: AnnotateImageData[];
+  annotations: any[];
+}
+
+export interface AnnotatePageHeaderProps {
+  datasetName: string;
+}
+
 export interface DatasetWithStats extends Dataset {
   totalImages: number;
   annotatedImages: number;
@@ -101,5 +130,22 @@ export interface CreateDatasetDialogProps {
 }
 
 export interface DatasetsPageHeaderProps {
+  onCreateClick: () => void;
+}
+
+export interface DatasetCardProps {
+  dataset: DatasetWithStats;
+  onOpen: (id: string) => void;
+  onDelete: (id: string) => void;
+  onToggleStar: (id: string) => void;
+  onUpload: (id: string) => void; // ← Add this
+}
+
+export interface DatasetsGridProps {
+  datasets: DatasetWithStats[];
+  onOpenDataset: (id: string) => void;
+  onDeleteDataset: (id: string) => void;
+  onToggleStar: (id: string) => void;
+  onUpload: (id: string) => void; // ← Add this
   onCreateClick: () => void;
 }

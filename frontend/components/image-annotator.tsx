@@ -18,9 +18,60 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize2,
+  Save,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { ImageAnnotatorProps, AnnotateImageData, AnnotateBoundingBox, AnnotateKeypoint, AnnotateExportData } from "@/lib/types"
+
+// Updated types to match backend
+interface AnnotateBox {
+  id?: string
+  label: string
+  x: number
+  y: number
+  w: number
+  h: number
+  color?: string
+}
+
+interface AnnotateKeypoint {
+  id: string
+  position: "topLeft" | "topRight" | "bottomLeft" | "bottomRight"
+  x: number
+  y: number
+}
+
+interface AnnotateBoundingBox {
+  id: string
+  label: string
+  x: number
+  y: number
+  width: number
+  height: number
+  keypoints: AnnotateKeypoint[]
+  color: string
+}
+
+interface AnnotateImageData {
+  id: string
+  name?: string // For compatibility
+  filename: string
+  src?: string // For compatibility
+  url: string
+  width: number
+  height: number
+  boxes: AnnotateBoundingBox[]
+  thumbnail?: string
+}
+
+interface ImageAnnotatorProps {
+  images: AnnotateImageData[]
+  currentImageIndex: number
+  onImagesChange: (images: AnnotateImageData[]) => void
+  onCurrentImageIndexChange: (index: number) => void
+  onSave?: (images: AnnotateImageData[]) => Promise<void>
+  onExport?: (data: any) => void
+  isSaving?: boolean
+}
 
 // Local type aliases for cleaner code
 type Keypoint = AnnotateKeypoint
@@ -48,7 +99,9 @@ export function ImageAnnotator({
   currentImageIndex,
   onImagesChange,
   onCurrentImageIndexChange,
+  onSave,
   onExport,
+  isSaving = false,
 }: ImageAnnotatorProps) {
   const [loadedImage, setLoadedImage] = useState<HTMLImageElement | null>(null)
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 })
@@ -93,6 +146,34 @@ export function ImageAnnotator({
       { ...box.keypoints[2], x: box.x, y: box.y + box.height },
       { ...box.keypoints[3], x: box.x + box.width, y: box.y + box.height },
     ]
+  }
+
+  // Convert simple boxes to full bounding boxes with keypoints
+  const convertToFullBox = (simpleBox: AnnotateBox): BoundingBox => {
+    const boxId = simpleBox.id || `box-${Date.now()}-${Math.random()}`
+    return {
+      id: boxId,
+      label: simpleBox.label,
+      x: simpleBox.x,
+      y: simpleBox.y,
+      width: simpleBox.w,
+      height: simpleBox.h,
+      color: simpleBox.color || "#60a5fa",
+      keypoints: createKeypoints(boxId, simpleBox.x, simpleBox.y, simpleBox.w, simpleBox.h),
+    }
+  }
+
+  // Convert full boxes back to simple format for saving
+  const convertToSimpleBox = (fullBox: BoundingBox): AnnotateBox => {
+    return {
+      id: fullBox.id,
+      label: fullBox.label,
+      x: fullBox.x,
+      y: fullBox.y,
+      w: fullBox.width,
+      h: fullBox.height,
+      color: fullBox.color,
+    }
   }
 
   const hexToRgba = (hex: string, alpha: number): string => {
@@ -282,100 +363,59 @@ export function ImageAnnotator({
 
     const img = new window.Image()
     img.crossOrigin = "anonymous"
+    
     img.onload = () => {
-      // Use original image dimensions for the canvas to preserve annotation accuracy
-      // The container will handle scrolling for large images
+      console.log("✅ Image loaded successfully:", imageToLoad.filename)
       setCanvasSize({ width: img.width, height: img.height })
       setLoadedImage(img)
     }
-    img.src = imageToLoad.src
+    
+    img.onerror = (e) => {
+      console.error("❌ Failed to load image:", imageToLoad.url, e)
+    }
+    
+    // Use url from backend
+    console.log("🔄 Loading image from:", imageToLoad.url)
+    img.src = imageToLoad.url
+    
     setSelectedBox(null)
     setExpandedBoxes(new Set())
   }, [images, currentImageIndex])
 
-  const generateThumbnail = (img: HTMLImageElement, maxSize = 80): string => {
-    const canvas = document.createElement("canvas")
-    const scale = Math.min(maxSize / img.width, maxSize / img.height)
-    canvas.width = img.width * scale
-    canvas.height = img.height * scale
-    const ctx = canvas.getContext("2d")
-    if (ctx) {
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-    }
-    return canvas.toDataURL("image/jpeg", 0.7)
-  }
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (!files || files.length === 0) return
-
-    const fileArray = Array.from(files)
-    let loadedCount = 0
-    const newImages: AnnotateImageData[] = []
-
-    fileArray.forEach((file, index) => {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const result = event.target?.result as string
-        if (!result) return
-
-        const img = new window.Image()
-        img.crossOrigin = "anonymous"
-        img.onload = () => {
-          const imageData: AnnotateImageData = {
-            id: `img-${Date.now()}-${index}`,
-            name: file.name,
-            src: result,
-            width: img.width,
-            height: img.height,
-            boxes: [],
-            thumbnail: generateThumbnail(img),
-          }
-          newImages[index] = imageData
-          loadedCount++
-
-          if (loadedCount === fileArray.length) {
-            // Filter out any undefined entries and add to images
-            const validImages = newImages.filter(Boolean)
-            onImagesChange([...images, ...validImages])
-            // Use setTimeout to ensure state update happens after images are set
-            if (images.length === 0) {
-              setTimeout(() => onCurrentImageIndexChange(0), 0)
-            }
-          }
-        }
-        img.src = result
-      }
-      reader.readAsDataURL(file)
-    })
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
-    }
-  }
-
-  const goToPreviousImage = () => {
+  const goToPreviousImage = async () => {
     if (currentImageIndex > 0) {
+      // Auto-save current image before switching
+      if (onSave) {
+        await onSave(images)
+      }
       onCurrentImageIndexChange(currentImageIndex - 1)
     }
   }
 
-  const goToNextImage = () => {
+  const goToNextImage = async () => {
     if (currentImageIndex < images.length - 1) {
+      // Auto-save current image before switching
+      if (onSave) {
+        await onSave(images)
+      }
       onCurrentImageIndexChange(currentImageIndex + 1)
     }
   }
 
-  const selectImage = (index: number) => {
-    onCurrentImageIndexChange(index)
+  const selectImage = async (index: number) => {
+    if (index !== currentImageIndex) {
+      // Auto-save current image before switching
+      if (onSave) {
+        await onSave(images)
+      }
+      onCurrentImageIndexChange(index)
+    }
   }
 
   const getMousePos = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current
     if (!canvas) return { x: 0, y: 0 }
     const rect = canvas.getBoundingClientRect()
-    // Account for zoom when calculating mouse position
     const x = (e.clientX - rect.left) / zoom
     const y = (e.clientY - rect.top) / zoom
     return { x, y }
@@ -614,14 +654,22 @@ export function ImageAnnotator({
     })
   }
 
+  const handleSave = async () => {
+    if (!onSave) return
+    
+    console.log("💾 Saving annotations...")
+    await onSave(images)
+  }
+
   const handleExportJSON = () => {
-    const data: AnnotateExportData = {
+    if (!onExport) return
+
+    const data = {
       dataset: images.map((img) => {
-        // Coordinates are now stored at original image scale, no conversion needed
         return {
           image: {
             id: img.id,
-            name: img.name,
+            name: img.filename || img.name,
             width: img.width,
             height: img.height,
           },
@@ -646,7 +694,6 @@ export function ImageAnnotator({
       }),
     }
 
-    // Call the export callback provided by the parent container
     onExport(data)
   }
 
@@ -657,6 +704,9 @@ export function ImageAnnotator({
   }
 
   const selectedBoxData = boxes.find((box) => box.id === selectedBox)
+
+  const displayName = currentImage?.filename || "Unknown"
+  const displayThumbnail = currentImage?.url
 
   return (
     <div className="flex gap-4 w-full max-w-full overflow-hidden">
@@ -672,48 +722,44 @@ export function ImageAnnotator({
               {images.length === 0 ? (
                 <div className="text-xs text-muted-foreground text-center py-6">No images uploaded yet</div>
               ) : (
-                images.map((img, index) => (
-                  <button
-                    key={img.id}
-                    onClick={() => selectImage(index)}
-                    className={cn(
-                      "w-full p-2 rounded-lg border transition-all text-left cursor-pointer",
-                      index === currentImageIndex
-                        ? "bg-primary/10 border-primary/50 ring-1 ring-primary/30"
-                        : "bg-card/50 border-border/50 hover:bg-muted/50",
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      {img.thumbnail ? (
-                        <img
-                          src={img.thumbnail || "/placeholder.svg"}
-                          alt={img.name}
-                          className="w-12 h-12 object-cover rounded border border-border/50"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 bg-muted/30 rounded flex items-center justify-center">
-                          <ImageIcon className="w-5 h-5 text-muted-foreground" />
-                        </div>
+  
+                images.map((img, index) => {
+                  const imgName = img.filename || `Image ${index + 1}`
+                  const imgThumb = img.url
+                  
+                  return (
+                    <button
+                      key={img.id}
+                      onClick={() => selectImage(index)}
+                      className={cn(
+                        "w-full p-2 rounded-lg border transition-all text-left cursor-pointer",
+                        index === currentImageIndex
+                          ? "bg-primary/10 border-primary/50 ring-1 ring-primary/30"
+                          : "bg-card/50 border-border/50 hover:bg-muted/50",
                       )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-foreground truncate">{img.name}</p>
-                        <p className="text-xs text-muted-foreground">{img.boxes.length} boxes</p>
+                    >
+                      <div className="flex items-center gap-2">
+                        {imgThumb ? (
+                          <img
+                            src={imgThumb}
+                            alt={imgName}
+                            className="w-12 h-12 object-cover rounded border border-border/50"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 bg-muted/30 rounded flex items-center justify-center">
+                            <ImageIcon className="w-5 h-5 text-muted-foreground" />
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-foreground truncate">{imgName}</p>
+                          <p className="text-xs text-muted-foreground">{img.boxes.length} boxes</p>
+                        </div>
                       </div>
-                    </div>
-                  </button>
-                ))
+                    </button>
+                  )
+                })
               )}
             </div>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="w-full mt-3 gap-2 bg-transparent border-border/50 cursor-pointer"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="w-3 h-3" />
-              Add Images
-            </Button>
           </Card>
         )}
       </div>
@@ -736,22 +782,10 @@ export function ImageAnnotator({
                 <div className="p-4 rounded-full bg-primary/10 mb-4">
                   <Upload className="w-8 h-8 text-primary" />
                 </div>
-                <h3 className="text-lg font-medium text-foreground mb-2">Upload images to start</h3>
+                <h3 className="text-lg font-medium text-foreground mb-2">No images yet</h3>
                 <p className="text-sm text-muted-foreground mb-4 text-center max-w-xs">
-                  Draw bounding boxes and annotate keypoints like mapping constellations
+                  Upload images from the datasets page to start annotating
                 </p>
-                <Button onClick={() => fileInputRef.current?.click()} className="gap-2 glow-primary cursor-pointer">
-                  <Upload className="w-4 h-4" />
-                  Choose Images
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleImageUpload}
-                  className="hidden"
-                />
               </div>
             ) : (
               <div className="space-y-4">
@@ -794,24 +828,28 @@ export function ImageAnnotator({
                         <Maximize2 className="w-4 h-4" />
                       </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="gap-2 cursor-pointer"
-                    >
-                      <Upload className="w-4 h-4" />
-                      Add
-                    </Button>
+                    
+                    {onSave && (
+                      <Button
+                        onClick={handleSave}
+                        disabled={isSaving}
+                        size="sm"
+                        className="gap-2 cursor-pointer"
+                      >
+                        {isSaving ? (
+                          <>
+                            <span className="w-4 h-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
+                            Saving...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="w-4 h-4" />
+                            Save
+                          </>
+                        )}
+                      </Button>
+                    )}
                   </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
                 </div>
 
                 <div
@@ -855,28 +893,28 @@ export function ImageAnnotator({
                     variant="outline"
                     size="sm"
                     onClick={goToPreviousImage}
-                    disabled={currentImageIndex === 0}
+                    disabled={currentImageIndex === 0 || isSaving}
                     className="gap-2 bg-transparent cursor-pointer disabled:cursor-not-allowed"
                   >
                     <ChevronLeft className="w-4 h-4" />
-                    Previous
+                    {isSaving ? "Saving..." : "Previous"}
                   </Button>
 
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span className="font-mono">
                       {currentImageIndex + 1} / {images.length}
                     </span>
-                    <span className="text-foreground font-medium truncate max-w-[200px]">{currentImage?.name}</span>
+                    <span className="text-foreground font-medium truncate max-w-[200px]">{displayName}</span>
                   </div>
 
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={goToNextImage}
-                    disabled={currentImageIndex === images.length - 1}
+                    disabled={currentImageIndex === images.length - 1 || isSaving}
                     className="gap-2 bg-transparent cursor-pointer disabled:cursor-not-allowed"
                   >
-                    Next
+                    {isSaving ? "Saving..." : "Next"}
                     <ChevronRight className="w-4 h-4" />
                   </Button>
                 </div>

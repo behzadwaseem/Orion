@@ -5,13 +5,14 @@ from app.routes import auth, datasets, images, annotations
 
 app = FastAPI(title="Orion API", version="0.1.0")
 
-# CORS Configuration
+# CORS Configuration 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],
+    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],  # Important for file downloads
 )
 
 # Include routers

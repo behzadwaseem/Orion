@@ -182,5 +182,9 @@ async def get_image_file(
     return FileResponse(
         path=file_path,
         media_type=media_type,
-        filename=image.filename
+        filename=image.filename,
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Credentials": "true",
+        }
     )

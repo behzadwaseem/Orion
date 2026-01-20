@@ -10,6 +10,7 @@ export function DatasetsGrid({
   onOpenDataset,
   onDeleteDataset,
   onToggleStar,
+  onUpload,
   onCreateClick,
 }: DatasetsGridProps) {
   return (
@@ -21,6 +22,7 @@ export function DatasetsGrid({
           onOpen={onOpenDataset}
           onDelete={onDeleteDataset}
           onToggleStar={onToggleStar}
+          onUpload={onUpload}
         />
       ))}
 

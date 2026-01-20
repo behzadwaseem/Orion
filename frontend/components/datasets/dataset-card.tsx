@@ -7,7 +7,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { FolderOpen, Calendar, MoreHorizontal, Trash2, Star } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { FolderOpen, Calendar, MoreHorizontal, Trash2, Star, Upload } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { DatasetCardProps } from "@/lib/types"
 
@@ -18,12 +19,11 @@ function getProgressColor(annotated: number, total: number): string {
   return "bg-amber-500"
 }
 
-export function DatasetCard({ dataset, onOpen, onDelete, onToggleStar }: DatasetCardProps) {
+export function DatasetCard({ dataset, onOpen, onDelete, onToggleStar, onUpload }: DatasetCardProps) {
   const progressPercent = dataset.totalImages > 0 
     ? (dataset.annotatedImages / dataset.totalImages) * 100 
     : 0
 
-  // Format date (e.g., "Jan 19, 2026")
   const updatedDate = new Date(dataset.created_at).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -58,6 +58,16 @@ export function DatasetCard({ dataset, onOpen, onDelete, onToggleStar }: Dataset
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="bg-card border-border">
+            <DropdownMenuItem
+              onClick={(e) => {
+                e.stopPropagation()
+                onUpload(dataset.id)
+              }}
+              className="cursor-pointer"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Upload Images
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
                 e.stopPropagation()
