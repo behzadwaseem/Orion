@@ -52,3 +52,24 @@ async def get_dataset(
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     return dataset
+
+@router.delete("/{dataset_id}")
+async def delete_dataset(
+    dataset_id: UUID,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db)
+):
+    """Delete a dataset and all its images/annotations."""
+    dataset = db.query(Dataset).filter(
+        Dataset.id == dataset_id,
+        Dataset.owner_user_id == user.id
+    ).first()
+    
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    
+    # SQLAlchemy cascade will delete images and annotations
+    db.delete(dataset)
+    db.commit()
+    
+    return {"message": "Dataset deleted successfully"}
