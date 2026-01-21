@@ -2,6 +2,13 @@
 
 Orion is a full stack web app for creating computer vision datasets with manual bounding box annotation and YOLO-powered auto-labeling. It includes an optional Agent Mode that samples images, computes simple quality metrics, and adjusts YOLO parameters before labeling the full dataset.
 
+## Why Orion Exists
+
+Creating high-quality labeled image data is one of the biggest bottlenecks in computer vision. Teams often have large collections of unlabeled images but need consistent annotations to train, evaluate, and iterate on models for a specific domain such as manufacturing defects, medical imagery, retail inventory, traffic monitoring, robotics, or academic research. Orion is built for situations where time and labeling budget are limited, including masters students and researchers building datasets for experiments, startups bootstrapping a model for a new product, and engineering teams that need a lightweight internal tool to curate training data quickly.
+
+Even though YOLO can place bounding boxes out of the box, labeled data is still essential because generic pretrained detectors rarely match a new domain perfectly and cannot define your project’s exact labeling rules. You still need ground truth annotations to (1) train or fine-tune a model on your target classes and camera conditions, (2) measure model quality objectively with metrics like precision and recall, (3) correct systematic errors like missing small objects, confusing similar classes, or inconsistent box tightness, and (4) create a reliable dataset that can be versioned, audited, and reused. Orion speeds up this process by combining fast manual labeling with AI-assisted prelabeling so you can produce consistent, ML-ready annotations that directly improve downstream training and evaluation.
+
+
 [<img width="1440" height="876" alt="image" src="https://github.com/user-attachments/assets/9295f6a0-e250-45fb-abe2-390e8a10fbda" />](https://www.youtube.com/watch?v=c68kAMMEUuk)
 
 
